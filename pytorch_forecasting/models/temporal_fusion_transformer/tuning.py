@@ -42,6 +42,7 @@ def optimize_hyperparameters(
     hidden_continuous_size_range: Tuple[int, int] = (8, 64),
     attention_head_size_range: Tuple[int, int] = (1, 4),
     dropout_range: Tuple[float, float] = (0.1, 0.3),
+    lstm_layers: Tuple[int, int] = (2, 6),
     learning_rate_range: Tuple[float, float] = (1e-5, 1.0),
     use_learning_rate_finder: bool = True,
     trainer_kwargs: Dict[str, Any] = {},
