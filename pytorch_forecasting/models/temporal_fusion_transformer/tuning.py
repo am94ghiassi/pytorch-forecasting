@@ -7,7 +7,7 @@ import os
 from typing import Any, Dict, Tuple, Union
 
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint, TQDMProgressBar
 from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.tuner import Tuner
 import numpy as np
@@ -36,13 +36,14 @@ def optimize_hyperparameters(
     model_path: str,
     max_epochs: int = 20,
     n_trials: int = 100,
-    timeout: float = 3600 * 8.0,  # 8 hours
+    timeout: float = 3600 * 24.0,  # 24 hours
     gradient_clip_val_range: Tuple[float, float] = (0.01, 100.0),
     hidden_size_range: Tuple[int, int] = (16, 265),
     hidden_continuous_size_range: Tuple[int, int] = (8, 64),
     attention_head_size_range: Tuple[int, int] = (1, 4),
     dropout_range: Tuple[float, float] = (0.1, 0.3),
-    lstm_layers: Tuple[int, int] = (2, 6),
+    lstm_layers_range: Tuple[int, int] = (2, 6),
+    weight_decay_range: Tuple[float, float] = (0.00001, 0.5),
     learning_rate_range: Tuple[float, float] = (1e-5, 1.0),
     use_learning_rate_finder: bool = True,
     trainer_kwargs: Dict[str, Any] = {},
@@ -121,6 +122,7 @@ def optimize_hyperparameters(
         )
 
         learning_rate_callback = LearningRateMonitor()
+        tqdm_progress_bar = TQDMProgressBar()
         logger = TensorBoardLogger(log_dir, name="optuna", version=trial.number)
         gradient_clip_val = trial.suggest_loguniform("gradient_clip_val", *gradient_clip_val_range)
         default_trainer_kwargs = dict(
@@ -130,6 +132,7 @@ def optimize_hyperparameters(
             callbacks=[
                 learning_rate_callback,
                 checkpoint_callback,
+                tqdm_progress_bar,
                 PyTorchLightningPruningCallbackAdjusted(trial, monitor="val_loss"),
             ],
             logger=logger,
@@ -145,19 +148,24 @@ def optimize_hyperparameters(
         hidden_size = trial.suggest_int("hidden_size", *hidden_size_range, log=True)
         kwargs["loss"] = copy.deepcopy(loss)
         model = TemporalFusionTransformer.from_dataset(
-            train_dataloaders.dataset,
-            dropout=trial.suggest_uniform("dropout", *dropout_range),
-            hidden_size=hidden_size,
-            hidden_continuous_size=trial.suggest_int(
-                "hidden_continuous_size",
-                hidden_continuous_size_range[0],
-                min(hidden_continuous_size_range[1], hidden_size),
-                log=True,
-            ),
-            attention_head_size=trial.suggest_int("attention_head_size", *attention_head_size_range),
-            log_interval=-1,
-            **kwargs,
-        )
+                train_dataloaders.dataset,
+                lstm_layers=trial.suggest_int("lstm_layers", *lstm_layers_range),
+                hidden_size=hidden_size,
+                attention_head_size=trial.suggest_int("attention_head_size", *attention_head_size_range),
+                dropout=trial.suggest_uniform("dropout", *dropout_range),
+                weight_decay=trial.suggest_loguniform("weight_decay", *weight_decay_range),
+                hidden_continuous_size=trial.suggest_int(
+                    "hidden_continuous_size",
+                    hidden_continuous_size_range[0],
+                    min(hidden_continuous_size_range[1], hidden_size),
+                    log=True,
+                ),
+                reduce_on_plateau_patience=kwargs["reduce_on_plateau_patience"], #if model_conf.scheduler is None else model_conf.scheduler,
+                optimizer="Ranger",
+                log_localise=trial.suggest_discrete_uniform("log_localise", 0.0, 1.0, 1.0),
+                gaussian_localise=trial.suggest_discrete_uniform("gaussian_localise", 0.0, 1.0, 1.0),
+                degen_attn=trial.suggest_discrete_uniform("degen_attn", 0.0, 1.0, 1.0)   
+            )
         # find good learning rate
         if use_learning_rate_finder:
             lr_trainer = pl.Trainer(
