@@ -15,6 +15,7 @@ class QuantileLoss(MultiHorizonMetric):
 
     def __init__(
         self,
+        # our_weights=None,
         quantiles: List[float] = [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98],
         **kwargs,
     ):
@@ -25,12 +26,71 @@ class QuantileLoss(MultiHorizonMetric):
             quantiles: quantiles for metric
         """
         super().__init__(quantiles=quantiles, **kwargs)
+        # self.our_weights = torch.Tensor(our_weights).unsqueeze(dim=0)
 
     def loss(self, y_pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         # calculate quantile loss
         losses = []
         for i, q in enumerate(self.quantiles):
+            # if self.our_weights:
+            #     errors = (target - y_pred[..., i]) * self.our_weights.to(device=target.device)
+            # else:
             errors = target - y_pred[..., i]
+            losses.append(torch.max((q - 1) * errors, q * errors).unsqueeze(-1))
+        losses = 2 * torch.cat(losses, dim=2)
+
+        return losses
+
+    def to_prediction(self, y_pred: torch.Tensor) -> torch.Tensor:
+        """
+        Convert network prediction into a point prediction.
+
+        Args:
+            y_pred: prediction output of network
+
+        Returns:
+            torch.Tensor: point prediction
+        """
+        if y_pred.ndim == 3:
+            idx = self.quantiles.index(0.5)
+            y_pred = y_pred[..., idx]
+        return y_pred
+
+    def to_quantiles(self, y_pred: torch.Tensor) -> torch.Tensor:
+        """
+        Convert network prediction into a quantile prediction.
+
+        Args:
+            y_pred: prediction output of network
+
+        Returns:
+            torch.Tensor: prediction quantiles
+        """
+        return y_pred
+
+class WeightedQuantile(MultiHorizonMetric):
+    def __init__(
+        self,
+        quantiles: List[float] = [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98],
+        our_weights: List[float] = [1,1,1,1,1,1,1,1,1,1,1,1],
+        **kwargs,
+    ):
+        """
+        Quantile loss
+
+        Args:
+            quantiles: quantiles for metric
+        """
+        
+        super().__init__(quantiles=quantiles, **kwargs)
+        self.our_weights = torch.Tensor(our_weights).unsqueeze(dim=0)
+
+    def loss(self, y_pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        # calculate quantile loss
+        losses = []
+        for i, q in enumerate(self.quantiles):
+            breakpoint()
+            errors = (target - y_pred[..., i]) * self.our_weights.to(device=target.device)
             losses.append(torch.max((q - 1) * errors, q * errors).unsqueeze(-1))
         losses = 2 * torch.cat(losses, dim=2)
 

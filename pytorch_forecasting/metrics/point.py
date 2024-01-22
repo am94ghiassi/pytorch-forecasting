@@ -93,6 +93,20 @@ class MAE(MultiHorizonMetric):
         loss = (self.to_prediction(y_pred) - target).abs()
         return loss
 
+class WeightedMAE(MultiHorizonMetric):
+    """
+    Mean average absolute error.
+
+    Defined as ``(y_pred - target).abs()``
+    """
+    def __init__(self, our_weights):
+        super().__init__()
+        self.our_weights = torch.Tensor(our_weights).unsqueeze(dim=0)
+
+    def loss(self, y_pred, target):
+        loss = ((self.to_prediction(y_pred) - target).abs()) * self.our_weights.to(device=target.device)
+        return loss
+
 
 class CrossEntropy(MultiHorizonMetric):
     """

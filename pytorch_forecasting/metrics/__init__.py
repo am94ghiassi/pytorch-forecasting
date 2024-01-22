@@ -19,8 +19,8 @@ from pytorch_forecasting.metrics.distributions import (
     NegativeBinomialDistributionLoss,
     NormalDistributionLoss,
 )
-from pytorch_forecasting.metrics.point import MAE, MAPE, MASE, RMSE, SMAPE, CrossEntropy, PoissonLoss, TweedieLoss
-from pytorch_forecasting.metrics.quantile import QuantileLoss
+from pytorch_forecasting.metrics.point import MAE, MAPE, MASE, RMSE, SMAPE, CrossEntropy, PoissonLoss, TweedieLoss, WeightedMAE
+from pytorch_forecasting.metrics.quantile import QuantileLoss, WeightedQuantile
 
 __all__ = [
     "MultiHorizonMetric",
@@ -45,4 +45,6 @@ __all__ = [
     "ImplicitQuantileNetworkDistributionLoss",
     "QuantileLoss",
     "MQF2DistributionLoss",
+    "WeightedMAE",
+    "WeightedQuantile"
 ]
