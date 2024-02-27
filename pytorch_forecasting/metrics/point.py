@@ -90,6 +90,7 @@ class MAE(MultiHorizonMetric):
     """
 
     def loss(self, y_pred, target):
+        # breakpoint()
         loss = (self.to_prediction(y_pred) - target).abs()
         return loss
 
@@ -107,6 +108,29 @@ class WeightedMAE(MultiHorizonMetric):
         loss = ((self.to_prediction(y_pred) - target).abs()) * self.our_weights.to(device=target.device)
         return loss
 
+class MarginUpper(MultiHorizonMetric):
+    """
+    Upper Margin Regularization Loss.
+    Regularization: 
+
+    Defined as ``(y_pred - target).abs()``
+    """
+
+    def loss(self, y_pred, target, slack=1e-6):
+        loss = torch.max((self.to_prediction(y_pred)) - target, torch.zeros(target.shape).to(device=target.device))
+        return loss
+    
+class MarginLower(MultiHorizonMetric):
+    """
+    Upper Margin Regularization Loss.
+    Regularization: 
+
+    Defined as ``(y_pred - target).abs()``
+    """
+
+    def loss(self, y_pred, target, slack=1e-6):
+        loss = torch.max(target - self.to_prediction(y_pred), torch.zeros(target.shape).to(device=target.device))
+        return loss
 
 class CrossEntropy(MultiHorizonMetric):
     """

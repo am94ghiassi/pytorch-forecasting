@@ -62,6 +62,7 @@ class TemporalFusionTransformer(BaseModelWithCovariates):
         gaussian_localise: bool = False,
         degen_attn: bool = False,
         logging_metrics: nn.ModuleList = None,
+        margin_ops: bool = False,
         **kwargs,
     ):
         """
@@ -145,6 +146,7 @@ class TemporalFusionTransformer(BaseModelWithCovariates):
         assert isinstance(loss, LightningMetric), "Loss has to be a PyTorch Lightning `Metric`"
         super().__init__(loss=loss, logging_metrics=logging_metrics, **kwargs)
 
+        self.margin_ops = margin_ops
         # processing inputs
         # embeddings
         self.input_embeddings = MultiEmbedding(
@@ -325,10 +327,14 @@ class TemporalFusionTransformer(BaseModelWithCovariates):
         # output processing -> no dropout at this late stage
         self.pre_output_gate_norm = GateAddNorm(self.hparams.hidden_size, dropout=None, trainable_add=False)
 
+        print("Output Shape: ", self.hparams.output_size)
         if self.n_targets > 1:  # if to run with multiple targets
-            self.output_layer = nn.ModuleList(
-                [nn.Linear(self.hparams.hidden_size, output_size) for output_size in self.hparams.output_size]
-            )
+            if self.margin_ops:
+                self.output_layer = nn.Linear(self.hparams.hidden_size, self.hparams.output_size[-1])
+            else:
+                self.output_layer = nn.ModuleList(
+                    [nn.Linear(self.hparams.hidden_size, output_size) for output_size in self.hparams.output_size]
+                )
         else:
             self.output_layer = nn.Linear(self.hparams.hidden_size, self.hparams.output_size)
 
@@ -500,21 +506,38 @@ class TemporalFusionTransformer(BaseModelWithCovariates):
         # skip connection over temporal fusion decoder (not LSTM decoder despite the LSTM output contains
         # a skip from the variable selection network)
         output = self.pre_output_gate_norm(output, lstm_output[:, max_encoder_length:])
+        # breakpoint()
         if self.n_targets > 1:  # if to use multi-target architecture
-            output = [output_layer(output) for output_layer in self.output_layer]
+            if self.margin_ops:
+                output = len(self.hparams.output_size) * [self.output_layer(output)]
+            else:
+                output = [output_layer(output) for output_layer in self.output_layer]
         else:
             output = self.output_layer(output)
+        # breakpoint()
 
-        return self.to_network_output(
-            prediction=self.transform_output(output, target_scale=x["target_scale"]),
-            encoder_attention=attn_output_weights[..., :max_encoder_length],
-            decoder_attention=attn_output_weights[..., max_encoder_length:],
-            static_variables=static_variable_selection,
-            encoder_variables=encoder_sparse_weights,
-            decoder_variables=decoder_sparse_weights,
-            decoder_lengths=decoder_lengths,
-            encoder_lengths=encoder_lengths,
-        )
+        if self.margin_ops:
+            return self.to_network_output(
+                prediction=self.transform_output(output, target_scale=x["target_scale"][0]), # Rescale wrt actual GT and not margins
+                encoder_attention=attn_output_weights[..., :max_encoder_length],
+                decoder_attention=attn_output_weights[..., max_encoder_length:],
+                static_variables=static_variable_selection,
+                encoder_variables=encoder_sparse_weights,
+                decoder_variables=decoder_sparse_weights,
+                decoder_lengths=decoder_lengths,
+                encoder_lengths=encoder_lengths,
+            )
+        else:
+            return self.to_network_output(
+                prediction=self.transform_output(output, target_scale=x["target_scale"]),
+                encoder_attention=attn_output_weights[..., :max_encoder_length],
+                decoder_attention=attn_output_weights[..., max_encoder_length:],
+                static_variables=static_variable_selection,
+                encoder_variables=encoder_sparse_weights,
+                decoder_variables=decoder_sparse_weights,
+                decoder_lengths=decoder_lengths,
+                encoder_lengths=encoder_lengths,
+            )
 
     def on_fit_end(self):
         if self.log_interval > 0:

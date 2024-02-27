@@ -738,6 +738,7 @@ class TimeSeriesDataSet(Dataset):
         assert "__time_idx__" not in data.columns, "__time_idx__ is a protected column and must not be present in data"
         data["__time_idx__"] = data[self.time_idx]  # save unscaled
         for target in self.target_names:
+            # print("TARGET NAMES: ", self.target_names)
             assert (
                 f"__target__{target}" not in data.columns
             ), f"__target__{target} is a protected column and must not be present in data"
